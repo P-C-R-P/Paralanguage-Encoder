@@ -1,110 +1,75 @@
 import re
-# import spacy
-# import nltk
-# from nltk.tokenize import TreebankWordTokenizer as twt
+import spacy
+import emoji
 
+from unidecode import unidecode
+from nltk.corpus import words
 
 def main():
-    chat = r'test.txt'
+    # Assign file name to variable:
+    chat = 'test-chat.txt'
 
-    dict_list = []
-    error_list = []
-    author_list = []
+    # Load SpaCy natural language model:
+    model = spacy.load('en_core_web_sm')
 
-    # Regular expression patterns associated with date, time, author name and message to extract these data from text
-    # file
+    example_message = 'send me a linkkk'
+
+    document = model(example_message)
+    tokens = []
+    for token in document:
+        if token.text.lower() not in words.words('en'):
+            tokens.append(token.text)
+    # Initiate list and dictionary to store message and author data:
+    message_list = []
+    author_dict = {}
+
+    # Defining the Regular Expressions associated with date, time, author, message body and external links within WhatsApp file
     date_regex = r'^[0-9]{2}\/[0-9]{2}\/[0-9]{4}(?=,\s)'
     time_regex = r'(?<=^[0-9]{2}\/[0-9]{2}\/[0-9]{4},\s)[0-9]{2}:[0-9]{2}(?=\s-\s)'
-    author_regex = r'(?<=^[0-9]{2}\/[0-9]{2}\/[0-9]{4},\s[0-9]{2}:[0-9]{2}\s-\s)[A-Z][a-z]+[\s]+[A-Z][a-z]+(?=:\s)'
+    author_regex = r'(?<=^[0-9]{2}\/[0-9]{2}\/[0-9]{4},\s[0-9]{2}:[0-9]{2}\s-\s).+(?=:\s)'
     message_regex = r'(?<=:\s).*$'
+    link_regex = r'^https?:\/\/\S+$'
 
-    # Function to search for date regular expression in text file and return true or false if there is match
-    def date_function(text):
-        match = re.search(date_regex, text)
-        if match:
-            return True
-        else:
-            return False
+    # Store all regex patterns in array to allow efficient access:
+    regex_list = [date_regex, time_regex, author_regex, message_regex]
 
-    # Function to search for time regular expression in text file and return true or false if there is match
-    def time_function(text):
-        match = re.search(time_regex, text)
-        if match:
-            return True
-        else:
-            return False
-
-    # Function to search for author name regular expression in text file and return true or false if there is match
-    def author_function(text):
-        match = re.search(author_regex, text)
-        if match:
-            return True
-        else:
-            return False
-
-    # Function to search for message regular expression in text file and return true or false if there is match
-    def message_function(text):
-        match = re.search(message_regex, text)
-        if match:
-            return True
-        else:
-            return False
-
-    # Function to split text associated with author name by colon and return true or false if length of author name is 2
-    def author_split(text):
-        text = text.split(': ', 1)
-        if len(text) == 2:
-            return True
-        else:
-            return False
-
-    # Function to split text associated with date, time, message and author by dash, comma, colon and index position
-    # and return list of dictionaries
-    def line_split(text):
-        text = text.split(' - ')
-        timestamp = text[0]
-        date, time = timestamp.split(', ')
-        message = ' '.join(text[1:])
-        if author_split(message):
-            split = message.split(': ')
-            author = split[0]
-            message = ' '.join(split[1:])
-        else:
-            author = 'WhatsApp'
-        new_dict = {'date': date, 'time': time, 'author': author, 'message': message}
-        dict_list.append(new_dict)
-
-    # Open text file, read lines and for each line, if date, time, author and message functions return true,
-    # run line split function, otherwise append to error list
+    # Open exported WhatsApp text file with UTF-8 encoding:
     with open(chat, 'r', encoding='utf-8-sig') as file:
+        # Read each line in the file:
         lines = file.readlines()
+        # Go through each line in the file:
         for line in lines:
-            if date_function(line) and time_function(line) and author_function(line) and message_function(line):
-                line_split(line)
-            else:
-                error_list.append(line)
+            # Convert emojis and decode line to remove accents:
+            line_decoded_emojis = unidecode(emoji.demojize(line))
+            # Attempt to print each line:
+            try:
+                # If each line includes a date, time, author and message than proceed:
+                if all(re.search(regex, line_decoded_emojis) for regex in regex_list):
+                    # Split line on hyphen to separate timestamp:
+                    message_text = line_decoded_emojis.split(' - ', 1)
+                    # Assign timestamp to date and time variables by splitting on comma:
+                    date, time = message_text[0].split(', ', 1)
+                    # Assign rest of message body to author and message variables by splitting on colon:
+                    author, message = message_text[1].split(': ', 1)
+                    # Ignore messages that represent omitted media or just links:
+                    if message.strip() != '<Media omitted>' and not re.match(link_regex, message):
+                        # Check if author is already in the author dictionary:
+                        if author not in author_dict:
+                            # Anonymise speaker name and add to author dictionary:
+                            name = f'speaker{len(author_dict)}'
+                            author_dict[author] = name
+                            # Replace author name with anonymized name:
+                            author = name
+                        else:
+                            # Replace author name with anonymized name from author dictionary:
+                            author = author_dict[author]
+                            # Store message data in a dictionary, replacing unnecessary newlines:
+                            message_dict = {'date': date, 'time': time, 'author': author, 'message': message.replace('\n', '')}
+                        # Append each dictionary to message list:
+                            message_list.append(message_dict)
+            # Otherwise if there is an error with a character in that line, return an error message:
+            except:
+                print('Error: there was a problem processing this message.')
 
-    # For each dictionary in list, check whether author value is in author list, if not append author value to author
-    # list, then rename author value according to index position in author list
-    for d in dict_list:
-        name = d['author']
-        if name not in author_list:
-            author_list.append(name)
-        for i in range(len(author_list)):
-            if name == author_list[i] and name != 'WhatsApp':
-                d['author'] = 'Speaker ' + str(i + 1)
-
-    # THINGS TO DO NEXT:
-    # - Use and split author list by space, if value in author list appears in message, replace with number of λ to
-    # match speaker length
-    # - Organise messages into separate arrays according to speaker
-    # - Join all messages together into single string for each speaker
-    # - For each speaker's messages tag words according to linguistic feature
-    # - If word is not linguistic feature, append to list of para/extra features
-    # - If word is linguistic feature, replace word with upper and lowercase λ
-
-    print(dict_list)
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
