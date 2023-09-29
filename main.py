@@ -12,13 +12,22 @@ def main():
     # Load SpaCy natural language model:
     model = spacy.load('en_core_web_sm')
 
+    # Initiate empty list to store paralanguage features:
+    features = []
+
+    # An example message for testing purposes:
     example_message = 'send me a linkkk'
 
-    document = model(example_message)
-    tokens = []
-    for token in document:
+    # Use SpaCy NLP model to tokenize message:
+    tokens = model(example_message)
+
+    # Go through tokens:
+    for token in tokens:
+        # Check whether the tokens extracted from NLP model exist as words within English as defined by NLTK:
         if token.text.lower() not in words.words('en'):
-            tokens.append(token.text)
+            # If they do not exist then append them to the list of potential paralanguage tokens:
+            features.append(token.text)
+
     # Initiate list and dictionary to store message and author data:
     message_list = []
     author_dict = {}
