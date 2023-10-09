@@ -110,3 +110,35 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def test_spacy():
+    # Load SpaCy natural language model:
+    model = spacy.load('en_core_web_sm')
+    # Initiate empty list to store paralanguage features:
+    features = []
+    # An example message for testing purposes:
+    example_message = 'yeah, Philippa, send me a linkkk :pray:'
+    # Use SpaCy NLP model to tokenize message:
+    tokens = model(example_message)
+    # Go through tokens:
+    for token in tokens:
+        # Check whether the tokens extracted from NLP model exist as words within English as defined by NLTK:
+        if token.text.lower() not in words.words('en'):
+            # If they do not exist then append them to the list of potential paralanguage tokens:
+            features.append(token.text)
+    # Execute function to read chat text file and output message dictionary list:
+    read_chat()
+    print(features)
+
+# TODO
+# Split on whitespace - create list of key-value pairs for each word/token and assign tag to those we want?
+# Identify and tag emojis using regex :description:
+# Split into tokens after this part if necessary
+# Identify punctuation as aspect of paralanguage
+# Identify interjections using nltk/spacy
+# Identify miscellaneous language features using tokenization to view list of unattributed features
+# Encode the rest of the text file as needed
+# Connect example to list of dictionaries
+# Think about machine learning for better understanding of paralanguage features
+# Think about previous research project
+# Save all features at the end to optimise future use
