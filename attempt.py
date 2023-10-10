@@ -130,7 +130,18 @@ def test_spacy():
     read_chat()
     print(features)
 
-# TODO
+
+emoji_regex = r':[A-Za-z_-]+:'
+test = 'Ignore this message, :pray: :) 🙂😊'
+test = unidecode(emoji.demojize(test))
+result = re.search(emoji_regex, test)
+print(result)
+
+# TODO Identify :emojis:
+# TODO Split into tokens
+# TODO Tag names, numbers, emojis, punctuation
+# TODO Identify interjections with nltk (UH)
+# TODO Find words -> view list of non-words to identify gaps in coverage
 # Split on whitespace - create list of key-value pairs for each word/token and assign tag to those we want?
 # Identify and tag emojis using regex :description:
 # Split into tokens after this part if necessary
@@ -142,3 +153,95 @@ def test_spacy():
 # Think about machine learning for better understanding of paralanguage features
 # Think about previous research project
 # Save all features at the end to optimise future use
+
+# Define function to remove names from message passed to function:
+def remove_names(names_list, message):
+    # Convert message to message list to allow string to be mutable:
+    message_list = list(message)
+    # Loop over names in list of names:
+    for name in names_list:
+        # Assign result of regular expression search for name to variable:
+        search = re.search(re.escape(name), message, flags=re.IGNORECASE)
+        # If regular expression result returns a result:
+        if search:
+            # Access start and end index position using span method defined on search:
+            start, end = search.span()
+            # Loop over indexes in range given by span:
+            for index in range(start, end):
+                # If individual character in list of characters constituting message string is uppercase:
+                if message_list[index].isupper():
+                    # Assign uppercase symbol:
+                    symbol = 'Z'
+                # Otherwise:
+                else:
+                    # Assign lowercase symbol:
+                    symbol = 'z'
+                # Change character to appropriate symbol:
+                message_list[index] = symbol
+    # Rejoin message list to form string:
+    message = ''.join(message_list)
+    # Return altered string:
+    return message
+
+
+# Define function to remove any numbers from message passed to it:
+def remove_numbers(message):
+    # Substitute any numeric character with symbol:
+    return re.sub(r'\d', 'z', message)
+
+
+# Define function to anonymise message:
+def anonymise_message(names_list, message):
+    # First call function to remove names in message:
+    message = remove_names(names_list, message)
+    # Second return message with numbers removed:
+    return remove_numbers(message)
+
+
+# Define function that simply splits text on whitespace (default):
+def split_text(text):
+    return text.split()
+
+
+# Define function to retrieve any names that can be identified from messages and authors:
+def retrieve_names(author_dict, names_list, message):
+    alphabetic_regex = r'[^a-zA-Z]'
+    # Split message on whitespace into 'tokens':
+    tokens = split_text(message)
+    # Loop over each token:
+    for token in tokens:
+        # Focus on alphabetic characters and ignore/clean others:
+        clean_token = re.sub(alphabetic_regex, '', token)
+        # If that clean token is included in nltk's male or female names and is not yet in the list of names:
+        if clean_token in (names.words('male.txt') or names.words('female.txt') and clean_token not in names_list):
+            # Then append it:
+            names_list.append(clean_token)
+    # Iterate over keys in author dictionary used to anonymise speakers:
+    for key in author_dict.keys():
+        # Create a list based on splitting each name:
+        key_list = split_text(key)
+        # Loop over names in list:
+        for item in key_list:
+            # If that name is not yet in the list of names:
+            if item not in names_list:
+                # Add to the list of names:
+                names_list.append(item)
+    # Return the list of names:
+    return names_list
+
+    # Initiate list to store names:
+    names_list = []
+
+    # Retrieve all names in all messages first before going over messages to anonymise
+    retrieve_names(author_dict, names_list, message)
+    # Treated message is anonymized with numbers removed:
+    message = anonymise_message(names_list, message)
+
+    # Execute function to convert emojis and decode line to remove accents; assign to variable:
+    line_decoded = decode_text(line)
+
+
+# Define function to convert emojis and decode line to remove accents:
+def decode_text(line):
+    # Convert emojis and decode line to remove accents:
+    return unidecode(emoji.demojize(line))
