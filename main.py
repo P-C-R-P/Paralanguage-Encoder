@@ -3,7 +3,7 @@ import spacy
 import emoji
 
 from unidecode import unidecode
-from nltk.corpus import names
+from nltk.corpus import names, words
 
 # TODO Split or tokenise to treat each message
 # TODO Function to take the default case (something considered in vocabulary by nltk or spacy) and encode with upper and lowercase symbol
@@ -85,13 +85,40 @@ def read_chat(author_dict, message_list):
 
 def main():
     # MESSAGE TO BE REPLACED WITH MESSAGE_LIST WHEN FUNCTIONAL:
-    message = 'yeah, Adammmm, Adam will-you send me a linkkk \\U0001f603 3409'
+    message = 'Yeah, Adammmm, Adam will-you send mE a linkkk \\U0001f603 3409'
     # Initiate list to store message data:
     message_list = []
     # Initiate dictionary to store author data:
     author_dict = {}
     # Execute function to read chat text file and output message dictionary list:
     read_chat(author_dict, message_list)
+    treated_message = ''
+    token_list = []
+    tokens = message.split()
+    treated_token = ''
+    for token in tokens:
+        treated_list = []
+        punctuation_separated = re.findall(r"[-_.,;!?]|[A-Za-z0-9']+|\\U[0-9a-fA-F]+", token)
+        for element in punctuation_separated:
+            if element.lower() in words.words('en') or element.isdigit():
+                word = []
+                for letter in element:
+                    if letter.isupper():
+                        symbol = 'Z'
+                    elif letter.isdigit():
+                        symbol = 'y'
+                    else:
+                        symbol = 'z'
+                    letter = symbol
+                    word.append(letter)
+                encoded_word = ''.join(word)
+                element = encoded_word
+            treated_list.append(element)
+        treated_token = ''.join(treated_list)
+        token_list.append(treated_token)
+    treated_message = ' '.join(token_list)
+    print(treated_message)
+
 
 
 if __name__ == '__main__':
