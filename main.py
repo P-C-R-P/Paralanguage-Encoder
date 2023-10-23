@@ -1,18 +1,25 @@
 import re
 import spacy
 import emoji
+import nltk
 
 from unidecode import unidecode
+from nltk import pos_tag
 from nltk.corpus import names, words
+from nltk.tokenize import word_tokenize
+# nltk.download('punkt')
+# nltk.download('averaged_perceptron_tagger')
+# nltk.download('universal_tagset')
 
-# TODO Split or tokenise to treat each message
-# TODO Function to take the default case (something considered in vocabulary by nltk or spacy) and encode with upper and lowercase symbol
-# TODO Function to identify default interjections and preserve them
-# TODO Algorithm to go through repetitions in out of vocabulary word to identify if removing repetitions makes word in-vocabulary
-# TODO If removing all repetitions is not fruitful, call that word a word and conceal except repetitions
-# TODO If possible interjection, go through word until longest possible interjection match inside it is found (see article) and maintain
-# TODO If there is no interjection match then codify aspects which are not repeated
-# TODO Ensure emojis and emoticons remain
+# TODO Split or tokenise to treat each message DONE
+# TODO Function to take the default case (something considered in vocabulary by nltk or spacy) and encode with upper and lowercase symbol DONE
+# TODO Function to identify default interjections and preserve them IN PROGRESS
+# TODO Algorithm to go through repetitions in out of vocabulary word to identify if removing repetitions makes word in-vocabulary IN PROGRESS
+# TODO If removing all repetitions is not fruitful, call that word a word and conceal except repetitions DONE
+# TODO If possible interjection, go through word until longest possible interjection match inside it is found (see article) and maintain TO DO
+# TODO If there is no interjection match then codify aspects which are not repeated DONE
+# TODO Ensure emojis and emoticons remain DONE
+# TODO Comment work IN PROGRESS
 
 
 # Define function to encode and decode each message to convert to unicode:
@@ -85,41 +92,95 @@ def read_chat(author_dict, message_list):
 
 def main():
     # MESSAGE TO BE REPLACED WITH MESSAGE_LIST WHEN FUNCTIONAL:
-    message = 'Yeah, Adammmm, Adam will-you send mE a linkkk \\U0001f603 3409'
+    # TODO Cope with multiple repetitions TO DO
+    message = 'Yeah, yeah yeahhh Adammmm, Adam will-you send mE a linkkk \\U0001f603 3409'
     # Initiate list to store message data:
     message_list = []
     # Initiate dictionary to store author data:
     author_dict = {}
     # Execute function to read chat text file and output message dictionary list:
     read_chat(author_dict, message_list)
+    # TODO create a function for this stage of the process and consider that I do not need so many variables since I could just reassign TO DO
+    # INTERJECTIONS WORK
+    interjections = []
+    text = word_tokenize(message)
+    # Tagset is universal if you want X otherwise UH will show
+    tagged = pos_tag(text, tagset='universal')
+    # TODO go through and if there is a case in which it is X or UH then use this tag; save to list to check against - so you could go over the entire message file to locate anything that could be considered UH/X before and store in list TO DO
+    for token, tag in tagged:
+        if tag == 'UH' and token not in interjections:
+            interjections.append(token)
     treated_message = ''
     token_list = []
     tokens = message.split()
     treated_token = ''
     for token in tokens:
         treated_list = []
-        punctuation_separated = re.findall(r"[-_.,;!?]|[A-Za-z0-9']+|\\U[0-9a-fA-F]+", token)
+        punctuation_separated = re.findall(r'[-_.,;!?]|[A-Za-z0-9]+|\\U[0-9a-fA-F]+', token)
         for element in punctuation_separated:
-            if element.lower() in words.words('en') or element.isdigit():
+            # TODO if element represents an interjection then identify the interjection and do not encode, maybe tag the element so as to escape the next treatment in case interjection is included in vocabulary TO DO
+            # TODO check if token can be tagged with UH or not too TO DO
+            if (element.lower() in words.words('en') and element.lower() != 'yeah') or element.isdigit():
                 word = []
-                for letter in element:
-                    if letter.isupper():
+                for character in element:
+                    if character.isupper():
                         symbol = 'Z'
-                    elif letter.isdigit():
+                    elif character.isdigit():
                         symbol = 'y'
                     else:
                         symbol = 'z'
-                    letter = symbol
-                    word.append(letter)
+                    character = symbol
+                    word.append(character)
                 encoded_word = ''.join(word)
                 element = encoded_word
+            # TODO check if token can be tagged with UH or not too TO DO
+            elif element.lower() not in words.words('en') and element.lower() != 'yeah':
+                repeated_characters = re.search(r'([a-zA-Z])\1{1,}', element)
+                unique_alphabetic = re.search(r'([a-zA-Z])(?!\1)(?![\d\W])', element)
+                if repeated_characters:
+                    start, end = repeated_characters.span()
+                    sliced_word = element
+                    sliced_index = end - 1
+                    # TODO check if token can be tagged with UH or not too TO DO
+                    while sliced_word.lower() not in words.words('en') and sliced_word.lower() != 'yeah' and re.search(r'([a-zA-Z])\1{1,}', sliced_word):
+                        sliced_word = element[:sliced_index] + element[end:]
+                        sliced_index -= 1
+                    s, e = sliced_index, end
+                    # TODO check if token can be tagged with UH or not too TO DO
+                    if sliced_word.lower() != 'yeah':
+                        word = []
+                        for index, character in enumerate(element):
+                            if index not in range(s, e):
+                                if character.isupper():
+                                    symbol = 'Z'
+                                else:
+                                    symbol = 'z'
+                                character = symbol
+                            word.append(character)
+                        encoded_word = ''.join(word)
+                        element = encoded_word
+                elif not repeated_characters and unique_alphabetic:
+                    word = []
+                    for character in element:
+                        if character.isupper():
+                            symbol = 'Z'
+                        else:
+                            symbol = 'z'
+                        character = symbol
+                        word.append(character)
+                    encoded_word = ''.join(word)
+                    element = encoded_word
+            # TODO elif out of vocabulary and has repetitions continue to remove repeated character until in vocabulary and if still out of vocabulary mask all characters which do not represent repetitions DONE
             treated_list.append(element)
         treated_token = ''.join(treated_list)
         token_list.append(treated_token)
     treated_message = ' '.join(token_list)
     print(treated_message)
-
-
+    # TODO account for situations in which there are multiple characters that are repeated TO DO
+    # TODO check whether it matches interjections first IN PROGRESS
+    # TODO check why names are not matching ADAM but are matching ADAMMMMM DONE
+    # TODO encode if it doesn't match DONE
+    # TODO I'm going to need to take inspiration from n-queens backtracking algorithm for multiple repetitions TO DO
 
 if __name__ == '__main__':
     main()
