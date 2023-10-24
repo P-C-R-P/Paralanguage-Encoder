@@ -184,6 +184,7 @@ def remove_names(names_list, message):
     return message
 
 
+
 # Define function to remove any numbers from message passed to it:
 def remove_numbers(message):
     # Substitute any numeric character with symbol:
@@ -245,3 +246,28 @@ def retrieve_names(author_dict, names_list, message):
 def decode_text(line):
     # Convert emojis and decode line to remove accents:
     return unidecode(emoji.demojize(line))
+
+    if not rest:
+        combinations.append(list(combination))
+        return
+
+    for i in range(len(rest)):
+        current = rest[i]
+        if not current or current[1] > combination[-1]:
+            combination.append(current)
+            rest.pop(i)
+            backtracking_algorithm(combinations, combination, rest)
+            combination.pop()
+            rest.insert(i, current)
+
+    # for i in range(len(token)):
+    #     match = re.search(r'([a-zA-Z])\1{1,}', token)
+    #     if match:
+    #         start, end = match.span()
+    #         print(start, end)
+    #         sliced_word = token[:end-i] + token[end:]
+    #         # new_word = token[:i] + token[i:i+start] + token[i+end:]
+    #         print(sliced_word)
+    #         result = backtracking_algorithm(sliced_word)
+    #         if result:
+    #             return result

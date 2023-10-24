@@ -90,10 +90,46 @@ def read_chat(author_dict, message_list):
         message['message'] = encode_decode(message['message'])
 
 
+def find_sets(spans):
+    sets = []
+    def backtrack(rest, current):
+        if not rest:
+            sets.append(current[:])
+            return
+        x, y = rest[0]
+        for i in range(x + 1, y + 1):
+            current.append([x, i])
+            backtrack(rest[1:], current)
+            current.pop()
+    backtrack(spans, [])
+    return sets
+
+
+def combine_spans(sets):
+    combinations = []
+    def backtrack(rest, current):
+        if not rest:
+            combinations.append(current[:])
+            return
+        for s in sets[0]:
+            current.extend(s)
+            backtrack(rest[1:], current)
+            for i in range(len(s)):
+                current.pop()
+    backtrack(sets, [])
+    return combinations
+
+
+def find_spans(spans):
+    sets = [find_sets(spans)]
+    combinations = combine_spans(sets)
+    return combinations
+
+
 def main():
     # MESSAGE TO BE REPLACED WITH MESSAGE_LIST WHEN FUNCTIONAL:
     # TODO Cope with multiple repetitions TO DO
-    message = 'Yeah, yeah yeahhh Adammmm, Adam will-you send mE a linkkk \\U0001f603 3409'
+    message = 'Yeah, yeah yeahhh Adammmm, Adam will-you send mE a liiiinkkk \\U0001f603 3409'
     # Initiate list to store message data:
     message_list = []
     # Initiate dictionary to store author data:
@@ -135,9 +171,10 @@ def main():
                 element = encoded_word
             # TODO check if token can be tagged with UH or not too TO DO
             elif element.lower() not in words.words('en') and element.lower() != 'yeah':
+                number_repeats = len(re.findall(r'([a-zA-Z])\1{1,}', element))
                 repeated_characters = re.search(r'([a-zA-Z])\1{1,}', element)
                 unique_alphabetic = re.search(r'([a-zA-Z])(?!\1)(?![\d\W])', element)
-                if repeated_characters:
+                if repeated_characters and number_repeats == 1:
                     start, end = repeated_characters.span()
                     sliced_word = element
                     sliced_index = end - 1
@@ -159,6 +196,32 @@ def main():
                             word.append(character)
                         encoded_word = ''.join(word)
                         element = encoded_word
+                elif repeated_characters and number_repeats > 1:
+                    spans = []
+                    repeated_sequences = re.finditer(r'([a-zA-Z])\1{1,}', token)
+                    for match in repeated_sequences:
+                        start, end = match.span()
+                        spans.append([start, end])
+                    combinations = find_spans(spans)
+                    results = []
+                    for combination in combinations:
+                        result = []
+                        start = 0
+                        for index, item in enumerate(combination):
+                            result.append(element[start:item[0]] + element[item[0]:item[1]])
+                            start = spans[index][1]
+                        result.append(element[start:])
+                        joined = ''.join(result)
+                        results.append({'word': joined, 'spans': combination})
+                    longest_word = ''
+                    spans = ''
+                    for option in results:
+                        if option['word'].lower() in words.words('en') and len(option['word']) > len(longest_word):
+                            longest_word = option['word']
+                            spans = option['spans']
+                    if len(longest_word) > 0:
+                        for combination in spans:
+                            print(combination)
                 elif not repeated_characters and unique_alphabetic:
                     word = []
                     for character in element:
@@ -175,7 +238,7 @@ def main():
         treated_token = ''.join(treated_list)
         token_list.append(treated_token)
     treated_message = ' '.join(token_list)
-    print(treated_message)
+    # print(treated_message)
     # TODO account for situations in which there are multiple characters that are repeated TO DO
     # TODO check whether it matches interjections first IN PROGRESS
     # TODO check why names are not matching ADAM but are matching ADAMMMMM DONE
