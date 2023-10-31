@@ -7,18 +7,13 @@ from unidecode import unidecode
 from nltk import pos_tag
 from nltk.corpus import names, words
 from nltk.tokenize import word_tokenize
+
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
 # nltk.download('universal_tagset')
 
-# TODO Split or tokenise to treat each message DONE
-# TODO Function to take the default case (something considered in vocabulary by nltk or spacy) and encode with upper and lowercase symbol DONE
 # TODO Function to identify default interjections and preserve them IN PROGRESS
-# TODO Algorithm to go through repetitions in out of vocabulary word to identify if removing repetitions makes word in-vocabulary IN PROGRESS
-# TODO If removing all repetitions is not fruitful, call that word a word and conceal except repetitions DONE
 # TODO If possible interjection, go through word until longest possible interjection match inside it is found (see article) and maintain TO DO
-# TODO If there is no interjection match then codify aspects which are not repeated DONE
-# TODO Ensure emojis and emoticons remain DONE
 # TODO Comment work IN PROGRESS
 
 
@@ -72,6 +67,7 @@ def format_messages(author_dict, message_list, line):
     except:
         print('Error: there was a problem processing this message.')
 
+
 # Define function to read chat text file and output message dictionary list:
 def read_chat(author_dict, message_list):
     # Assign file name to variable:
@@ -91,7 +87,7 @@ def read_chat(author_dict, message_list):
 
 
 def find_sets(spans):
-    sets = []
+    sets= []
     def backtrack(rest, current):
         if not rest:
             sets.append(current[:])
@@ -126,10 +122,136 @@ def find_spans(spans):
     return combinations
 
 
+def analyze_message(message):
+    treated_message = ''
+    tokens = message.split()
+    token_list = analyze_tokens(tokens)
+    treated_message = ' '.join(token_list)
+    return treated_message
+
+
+def analyze_tokens(tokens):
+    treated_token = ''
+    token_list = []
+    for token in tokens:
+        treated_list = []
+        punctuation_separated = re.findall(r'[-_.,;!?]|[A-Za-z0-9]+|\\U[0-9a-fA-F]+', token)
+        for element in punctuation_separated:
+            # TODO if element represents an interjection then identify the interjection and do not encode, maybe tag the element so as to escape the next treatment in case interjection is included in vocabulary TO DO
+            # TODO check if token can be tagged with UH or not too TO DO
+            if (element.lower() in words.words('en') and element.lower() != 'yeah') or element.isdigit():
+                element = encode_word(element)
+            # TODO check if token can be tagged with UH or not too TO DO
+            elif element.lower() not in words.words('en') and element.lower() != 'yeah':
+                element = identify_word(element, token)
+            treated_list.append(element)
+            treated_token = ''.join(treated_list)
+        token_list.append(treated_token)
+    return token_list
+
+
+def encode_word(element):
+    word = []
+    for character in element:
+        if character.isupper():
+            symbol = 'Z'
+        elif character.isdigit():
+            symbol = 'y'
+        else:
+            symbol = 'z'
+        character = symbol
+        word.append(character)
+    encoded_word = ''.join(word)
+    return encoded_word
+
+
+def identify_word(element, token):
+    number_repeats = len(re.findall(r'([a-zA-Z])\1{1,}', element))
+    repeated_characters = re.search(r'([a-zA-Z])\1{1,}', element)
+    unique_alphabetic = re.search(r'([a-zA-Z])(?!\1)(?![\d\W])', element)
+    if repeated_characters and number_repeats == 1:
+        return one_repetition(repeated_characters, element)
+    elif repeated_characters and number_repeats > 1:
+        return multiple_repetitions(element, token)
+    elif not repeated_characters and unique_alphabetic:
+        return encode_word(element)
+    else:
+        return element
+
+
+def one_repetition(repeated_characters, element):
+    start, end = repeated_characters.span()
+    sliced_word = element
+    sliced_index = end - 1
+    # TODO check if token can be tagged with UH or not too TO DO
+    while sliced_word.lower() not in words.words('en') and sliced_word.lower() != 'yeah' and re.search(r'([a-zA-Z])\1{1,}', sliced_word):
+        sliced_word = element[:sliced_index] + element[end:]
+        sliced_index -= 1
+    s, e = sliced_index, end
+    # TODO check if token can be tagged with UH or not too TO DO
+    if sliced_word.lower() != 'yeah':
+        word = []
+        for index, character in enumerate(element):
+            if index not in range(s, e):
+                if character.isupper():
+                    symbol = 'Z'
+                else:
+                    symbol = 'z'
+                character = symbol
+            word.append(character)
+        encoded_word = ''.join(word)
+        return encoded_word
+    return element
+
+
+def multiple_repetitions(element, token):
+    spans = []
+    repeated_sequences = re.finditer(r'([a-zA-Z])\1{1,}', token)
+    for match in repeated_sequences:
+        start, end = match.span()
+        spans.append([start, end])
+    combinations = find_spans(spans)
+    results = []
+    for combination in combinations:
+        result = []
+        start = 0
+        for index, item in enumerate(combination):
+            result.append(element[start:item[0]] + element[item[0]:item[1]])
+            start = spans[index][1]
+        result.append(element[start:])
+        joined = ''.join(result)
+        results.append({'word': joined, 'spans': combination})
+    longest_word = ''
+    final_spans = ''
+    for option in results:
+        if option['word'].lower() in words.words('en') and len(option['word']) > len(longest_word):
+            longest_word = option['word']
+            final_spans = option['spans']
+    if len(longest_word) > 0:
+        word = []
+        for index, character in enumerate(element):
+            for i, combination in enumerate(final_spans):
+                if i < len(spans) - 1:
+                    next = spans[i + 1]
+                if (index < spans[0][0] or index > spans[-1][-1]) or (index in range(combination[0], combination[1])) or (index >= spans[i][-1] and index < next[0]):
+                    if character.isupper():
+                        character = 'Z'
+                    else:
+                        character = 'z'
+            word.append(character)
+        encoded_word = ''.join(word)
+        return encoded_word
+    else:
+        print('not in vocabulary')
+        # TODO Reduce repetitions to 2 TO DO
+        # TODO Check interjections TO DO
+        # TODO Check repetitions of unicode characters too TO DO
+        # TODO If not in vocabulary match then just encode non-repeated characters TO DO
+        return element
+
 def main():
     # MESSAGE TO BE REPLACED WITH MESSAGE_LIST WHEN FUNCTIONAL:
-    # TODO Cope with multiple repetitions TO DO
-    message = 'Yeah, yeah yeahhh Adammmm, Adam will-you send mE a liiiinkkk \\U0001f603 3409'
+    message = 'Yeah, yeah yeahhh Adammmm, Adam will-you send mE a Lnnkkk \\U0001f603 3409'
     # Initiate list to store message data:
     message_list = []
     # Initiate dictionary to store author data:
@@ -137,6 +259,7 @@ def main():
     # Execute function to read chat text file and output message dictionary list:
     read_chat(author_dict, message_list)
     # TODO create a function for this stage of the process and consider that I do not need so many variables since I could just reassign TO DO
+
     # INTERJECTIONS WORK
     interjections = []
     text = word_tokenize(message)
@@ -146,104 +269,9 @@ def main():
     for token, tag in tagged:
         if tag == 'UH' and token not in interjections:
             interjections.append(token)
-    treated_message = ''
-    token_list = []
-    tokens = message.split()
-    treated_token = ''
-    for token in tokens:
-        treated_list = []
-        punctuation_separated = re.findall(r'[-_.,;!?]|[A-Za-z0-9]+|\\U[0-9a-fA-F]+', token)
-        for element in punctuation_separated:
-            # TODO if element represents an interjection then identify the interjection and do not encode, maybe tag the element so as to escape the next treatment in case interjection is included in vocabulary TO DO
-            # TODO check if token can be tagged with UH or not too TO DO
-            if (element.lower() in words.words('en') and element.lower() != 'yeah') or element.isdigit():
-                word = []
-                for character in element:
-                    if character.isupper():
-                        symbol = 'Z'
-                    elif character.isdigit():
-                        symbol = 'y'
-                    else:
-                        symbol = 'z'
-                    character = symbol
-                    word.append(character)
-                encoded_word = ''.join(word)
-                element = encoded_word
-            # TODO check if token can be tagged with UH or not too TO DO
-            elif element.lower() not in words.words('en') and element.lower() != 'yeah':
-                number_repeats = len(re.findall(r'([a-zA-Z])\1{1,}', element))
-                repeated_characters = re.search(r'([a-zA-Z])\1{1,}', element)
-                unique_alphabetic = re.search(r'([a-zA-Z])(?!\1)(?![\d\W])', element)
-                if repeated_characters and number_repeats == 1:
-                    start, end = repeated_characters.span()
-                    sliced_word = element
-                    sliced_index = end - 1
-                    # TODO check if token can be tagged with UH or not too TO DO
-                    while sliced_word.lower() not in words.words('en') and sliced_word.lower() != 'yeah' and re.search(r'([a-zA-Z])\1{1,}', sliced_word):
-                        sliced_word = element[:sliced_index] + element[end:]
-                        sliced_index -= 1
-                    s, e = sliced_index, end
-                    # TODO check if token can be tagged with UH or not too TO DO
-                    if sliced_word.lower() != 'yeah':
-                        word = []
-                        for index, character in enumerate(element):
-                            if index not in range(s, e):
-                                if character.isupper():
-                                    symbol = 'Z'
-                                else:
-                                    symbol = 'z'
-                                character = symbol
-                            word.append(character)
-                        encoded_word = ''.join(word)
-                        element = encoded_word
-                elif repeated_characters and number_repeats > 1:
-                    spans = []
-                    repeated_sequences = re.finditer(r'([a-zA-Z])\1{1,}', token)
-                    for match in repeated_sequences:
-                        start, end = match.span()
-                        spans.append([start, end])
-                    combinations = find_spans(spans)
-                    results = []
-                    for combination in combinations:
-                        result = []
-                        start = 0
-                        for index, item in enumerate(combination):
-                            result.append(element[start:item[0]] + element[item[0]:item[1]])
-                            start = spans[index][1]
-                        result.append(element[start:])
-                        joined = ''.join(result)
-                        results.append({'word': joined, 'spans': combination})
-                    longest_word = ''
-                    spans = ''
-                    for option in results:
-                        if option['word'].lower() in words.words('en') and len(option['word']) > len(longest_word):
-                            longest_word = option['word']
-                            spans = option['spans']
-                    if len(longest_word) > 0:
-                        for combination in spans:
-                            print(combination)
-                elif not repeated_characters and unique_alphabetic:
-                    word = []
-                    for character in element:
-                        if character.isupper():
-                            symbol = 'Z'
-                        else:
-                            symbol = 'z'
-                        character = symbol
-                        word.append(character)
-                    encoded_word = ''.join(word)
-                    element = encoded_word
-            # TODO elif out of vocabulary and has repetitions continue to remove repeated character until in vocabulary and if still out of vocabulary mask all characters which do not represent repetitions DONE
-            treated_list.append(element)
-        treated_token = ''.join(treated_list)
-        token_list.append(treated_token)
-    treated_message = ' '.join(token_list)
-    # print(treated_message)
-    # TODO account for situations in which there are multiple characters that are repeated TO DO
+    treated_message = analyze_message(message)
+    print(treated_message)
     # TODO check whether it matches interjections first IN PROGRESS
-    # TODO check why names are not matching ADAM but are matching ADAMMMMM DONE
-    # TODO encode if it doesn't match DONE
-    # TODO I'm going to need to take inspiration from n-queens backtracking algorithm for multiple repetitions TO DO
 
 if __name__ == '__main__':
     main()

@@ -271,3 +271,32 @@ def decode_text(line):
     #         result = backtracking_algorithm(sliced_word)
     #         if result:
     #             return result
+
+
+# TODO Encode based on word and spans found (i.e. xiiiixkkkk) DONE
+# TODO Put into functions to make code cleaner DONE
+# TODO Cope with multiple repetitions DONE
+# TODO account for situations in which there are multiple characters that are repeated DONE
+# TODO check why names are not matching ADAM but are matching ADAMMMMM DONE
+# TODO encode if it doesn't match DONE
+# TODO I'm going to need to take inspiration from n-queens backtracking algorithm for multiple repetitions DONE
+# TODO Split or tokenise to treat each message DONE
+# TODO Function to take the default case (something considered in vocabulary by nltk or spacy) and encode with upper and lowercase symbol DONE
+# TODO Algorithm to go through repetitions in out of vocabulary word to identify if removing repetitions makes word in-vocabulary DONE
+# TODO If removing all repetitions is not fruitful, call that word a word and conceal except repetitions DONE
+# TODO If there is no interjection match then codify aspects which are not repeated DONE
+# TODO Ensure emojis and emoticons remain DONE
+# TODO elif out of vocabulary and has repetitions continue to remove repeated character until in vocabulary and if still out of vocabulary mask all characters which do not represent repetitions DONE# TODO Encode based on word and spans found (i.e. xiiiixkkkk) DONE
+# TODO Put into functions to make code cleaner DONE
+# TODO Cope with multiple repetitions DONE
+# TODO account for situations in which there are multiple characters that are repeated DONE
+# TODO check why names are not matching ADAM but are matching ADAMMMMM DONE
+# TODO encode if it doesn't match DONE
+# TODO I'm going to need to take inspiration from n-queens backtracking algorithm for multiple repetitions DONE
+# TODO Split or tokenise to treat each message DONE
+# TODO Function to take the default case (something considered in vocabulary by nltk or spacy) and encode with upper and lowercase symbol DONE
+# TODO Algorithm to go through repetitions in out of vocabulary word to identify if removing repetitions makes word in-vocabulary DONE
+# TODO If removing all repetitions is not fruitful, call that word a word and conceal except repetitions DONE
+# TODO If there is no interjection match then codify aspects which are not repeated DONE
+# TODO Ensure emojis and emoticons remain DONE
+# TODO elif out of vocabulary and has repetitions continue to remove repeated character until in vocabulary and if still out of vocabulary mask all characters which do not represent repetitions DONE
