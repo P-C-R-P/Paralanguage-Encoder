@@ -300,3 +300,27 @@ def decode_text(line):
 # TODO If there is no interjection match then codify aspects which are not repeated DONE
 # TODO Ensure emojis and emoticons remain DONE
 # TODO elif out of vocabulary and has repetitions continue to remove repeated character until in vocabulary and if still out of vocabulary mask all characters which do not represent repetitions DONE
+
+def combine_spans(sets):
+    combinations = []
+
+    def backtrack(rest, current):
+        if not rest:
+            combinations.append(current[:])
+            return
+        for s in sets[0]:
+            current.extend(s)
+            backtrack(rest[1:], current)
+            for i in range(len(s)):
+                current.pop()
+    backtrack(sets, [])
+    return combinations
+
+
+# Define function that returns
+def find_spans(spans):
+    sets = find_sets(spans)
+    print('sets', sets)
+    # combinations = combine_spans(sets)
+    # print('combos:', combinations)
+    return sets
