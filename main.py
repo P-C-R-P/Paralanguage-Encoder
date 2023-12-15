@@ -8,19 +8,65 @@ from nltk import pos_tag
 from nltk.corpus import names, words
 from nltk.tokenize import word_tokenize
 
+# Load SpaCy language model:
+nlp = spacy.load('en_core_web_sm')
+
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
 # nltk.download('universal_tagset')
 
-# TODO Function to identify default interjections and preserve them IN PROGRESS
+# TODO Offer choice of language for nltk and spacy
 # TODO If possible interjection, go through word until longest possible interjection match inside it is found (see article) and maintain TO DO
-# TODO Comment work IN PROGRESS
+# TODO Ensure it is possible to use spaCy for French interjections
+# TODO if element represents an interjection then identify the interjection and do not encode, maybe tag the element so as to escape the next treatment in case interjection is included in vocabulary TO DO
+# TODO Reduce repetitions to 2 TO DO
+# TODO If not in vocabulary match then just encode non-repeated characters TO DO
+# TODO go through and if there is a case in which it is X or UH then use this tag; save to list to check against - so you could go over the entire message file to locate anything that could be considered UH/X before and store in list TO DO
+# TODO create a function for this stage of the process and consider that I do not need so many variables since I could just reassign TO DO
+# TODO progress bar and checking file type?
+# TODO change link regex it's not working properly
+# TODO ensure character choice is correct
+# TODO double check interjections with X and for out of vocabulary words
+# TODO work out all the temporary stuff I left
+# TODO 'cartoonsssss'?
+
+
+# Define function to go over message list and find all examples of interjections:
+def find_interjections(messages):
+    # Initiate empty list for interjections:
+    interjections = []
+    # Loop over messages in message list:
+    for message in messages:
+        # Tokenize message:
+        tokens = word_tokenize(message['message'])
+        # Tag message:
+        tagged_tokens = nltk.pos_tag(tokens)
+        # Loop over tokens and tags in tagged token list:
+        for token, tag in tagged_tokens:
+            # If tag represents interjection and is not in interjections list already:
+            if tag == 'UH' and token not in interjections:
+                # Append to interjections list:
+                interjections.append(token)
+        universal_tagged = pos_tag(tokens, tagset='universal')
+        for token, tag in universal_tagged:
+            if tag == 'X' and token not in interjections and '\\' not in token:
+                interjections.append(token)
+        # Double check by tokenizing with second library:
+        document = nlp(message['message'])
+        # Loop over tokens in message:
+        for token in document:
+            # If token text has interjection part-of-speech tag and is not already in interjections list:
+            if token.pos_ == 'INTJ' and token.text not in interjections:
+                # Append to interjections list:
+                interjections.append(token.text)
+    # Return list of interjections:
+    return interjections
 
 
 # Define function to encode and decode each message to convert to unicode:
-def encode_decode(text):
-    # Encode and decode to maintain unicodes for emojis and accents:
-    return text.encode('unicode-escape').decode('utf-8-sig')
+def encode_emoji(character):
+    # Encode and decode to maintain unicode for emojis:
+    return character.encode('unicode-escape').decode('utf-8')
 
 
 # Define function that splits up messages according to regular expression patterns to create list of dictionaries:
@@ -45,7 +91,7 @@ def format_messages(author_dict, message_list, line):
             author, message = message_text[1].split(': ', 1)
             # Ignore messages that represent omitted media or just links:
             if message.strip() != '<Media omitted>' and not re.match(link_regex, message):
-                author = encode_decode(author)
+                # author = encode_decode(author)
                 # Check if author is already in the author dictionary:
                 if author not in author_dict:
                     # Anonymise speaker name:
@@ -69,11 +115,15 @@ def format_messages(author_dict, message_list, line):
 
 
 # Define function to read chat text file and output message dictionary list:
-def read_chat(author_dict, message_list):
+def read_chat():
+    # Initiate list to store message data:
+    message_list = []
+    # Initiate dictionary to store author data:
+    author_dict = {}
     # Assign file name to variable:
     chat = 'test-chat.txt'
     # Open exported WhatsApp text file with UTF-8 encoding:
-    with open(chat, 'r', encoding='utf-8-sig') as file:
+    with open(chat, 'r', encoding='utf-8') as file:
         # Read each line in the file:
         lines = file.readlines()
         # Go through each line in the file:
@@ -82,8 +132,19 @@ def read_chat(author_dict, message_list):
             format_messages(author_dict, message_list, line)
     # Go over each message in list:
     for message in message_list:
-        # Encode and decode message to keep unicode for emojis and accents:
-        message['message'] = encode_decode(message['message'])
+        # Initiate empty string to store encoded message:
+        encoded_message = ''
+        # Loop over characters in message:
+        for character in message['message']:
+            # If character is emoji:
+            if emoji.is_emoji(character):
+                # Encode and decode to obtain unicode representation of emoji:
+                character = encode_emoji(character)
+            # Add characters to empty string:
+            encoded_message += character
+        # Store newly encoded string in message dictionary:
+        message['message'] = encoded_message
+    return message_list
 
 
 # Define backtracking algorithm that finds all combinations of spans by recursively calling itself:
@@ -119,23 +180,19 @@ def find_spans(spans):
 
 
 # Define function to split given message into tokens on whitespace, returning list of treated tokens and joining them:
-def analyze_message(message):
+def analyze_message(interjections, message):
     # Split message into tokens:
     tokens = message.split()
     # Pass tokens to function to analyse and return encoded tokens as list:
-    token_list = analyze_tokens(tokens)
+    token_list = analyze_tokens(interjections, tokens)
     # Join tokens in token list with whitespace again:
     treated_message = ' '.join(token_list)
     # Return encoded message:
     return treated_message
 
 
-# TODO if element represents an interjection then identify the interjection and do not encode, maybe tag the element so as to escape the next treatment in case interjection is included in vocabulary TO DO
-# TODO check if token can be tagged with UH or not too TO DO
-
-
 # Define function that goes over tokens in list, identifying in and out of vocabulary tokens and encoding them:
-def analyze_tokens(tokens):
+def analyze_tokens(interjections, tokens):
     # Initiate treated token as empty string to allow it to be accessed from outside of for loop:
     treated_token = ''
     # Initiate empty list for encoded tokens:
@@ -149,13 +206,13 @@ def analyze_tokens(tokens):
         # Loop over punctuation-separated tokens:
         for element in punctuation_separated:
             # If punctuation-separated token is in vocabulary according to nltk or it represents a digit:
-            if (element.lower() in words.words('en') and element.lower() != 'yeah') or element.isdigit():
+            if (element.lower() in words.words('en') and element.lower() not in interjections) or element.isdigit():
                 # Immediately encode element:
                 element = encode_word(element)
             # Otherwise if punctuation-separated token is not in vocabulary:
-            elif element.lower() not in words.words('en') and element.lower() != 'yeah':
+            elif element.lower() not in words.words('en') and element.lower() not in interjections:
                 # Attempt to identify and encode token:
-                element = identify_word(element, token)
+                element = identify_word(interjections, element, token)
             # Append encoded token to list of treated tokens:
             treated_list.append(element)
             # Join punctuation-separated tokens back together:
@@ -175,14 +232,14 @@ def encode_word(element):
         # If character is uppercase:
         if character.isupper():
             # Symbol is also uppercase:
-            symbol = 'Z'
+            symbol = 'Λ'
         # Otherwise if character is number:
         elif character.isdigit():
             # Symbol is different:
-            symbol = 'y'
+            symbol = 'μ'
         # Otherwise symbol is lowercase:
         else:
-            symbol = 'z'
+            symbol = 'λ'
         # Character is replaced with symbol:
         character = symbol
         # Append encoded character to word list:
@@ -194,7 +251,7 @@ def encode_word(element):
 
 
 # Define function to attempt to identify and encode tokens that are out of vocabulary:
-def identify_word(element, token):
+def identify_word(interjections, element, token):
     # Use regular expressions to find number of repeats, repeated characters, and check if token is purely alphabetic:
     number_repeats = len(re.findall(r'([a-zA-Z])\1{1,}', element))
     repeated_characters = re.search(r'([a-zA-Z])\1{1,}', element)
@@ -202,7 +259,7 @@ def identify_word(element, token):
     # If only one character is repeated:
     if repeated_characters and number_repeats == 1:
         # Call and return function for tokens with one repetition:
-        return identify_single(repeated_characters, element)
+        return identify_single(interjections, repeated_characters, element)
     # Otherwise if multiple characters are repeated:
     elif repeated_characters and number_repeats > 1:
         # Call and return function for tokens with multiple repetitions:
@@ -216,12 +273,11 @@ def identify_word(element, token):
         return element
 
 
-# TODO check if token can be tagged with UH or not too TO DO
 # TODO check if while loop/if statement works when there is a single repeat but word is out of vocabulary (encode) TO DO
 
 
 # Define function to identify if out of vocabulary word with single repeated character is in vocabulary and encode:
-def identify_single(repeated_characters, element):
+def identify_single(interjections, repeated_characters, element):
     # Find start and end index of repeated character:
     start, end = repeated_characters.span()
     # Assign given token to new variable for slicing:
@@ -229,7 +285,7 @@ def identify_single(repeated_characters, element):
     # Assign index repeating last instance of repeated character to variable:
     sliced_index = end - 1
     # While sliced token is not in vocabulary and repeated characters still exist in token:
-    while sliced_word.lower() not in words.words('en') and sliced_word.lower() != 'yeah' and re.search(r'([a-zA-Z])\1{1,}', sliced_word):
+    while sliced_word.lower() not in words.words('en') and sliced_word.lower() not in interjections and re.search(r'([a-zA-Z])\1{1,}', sliced_word):
         # Further slice word to get rid of one instance of repeated character:
         sliced_word = element[:sliced_index] + element[end:]
         # Decrease index at which to slice word on next iteration:
@@ -237,7 +293,7 @@ def identify_single(repeated_characters, element):
     # Define final start and end index that make word in vocabulary word after removal of repeats:
     s, e = sliced_index, end
     # TEMPORARY:
-    if sliced_word.lower() != 'yeah':
+    if sliced_word.lower() not in interjections:
         # Initiate empty list to store characters of given token:
         word = []
         # Loop over characters in given token with associated index position:
@@ -247,10 +303,10 @@ def identify_single(repeated_characters, element):
                 # If character is uppercase:
                 if character.isupper():
                     # Symbol is uppercase:
-                    symbol = 'Z'
+                    symbol = 'Λ'
                 # Otherwise symbol is lowercase:
                 else:
-                    symbol = 'z'
+                    symbol = 'λ'
                 # Replace character with given symbol:
                 character = symbol
             # Append encoded character to word list:
@@ -261,12 +317,6 @@ def identify_single(repeated_characters, element):
         return encoded_word
     # Return element without encoding:
     return element
-
-
-# TODO Reduce repetitions to 2 TO DO
-# TODO Check interjections TO DO
-# TODO Check repetitions of unicode characters too TO DO
-# TODO If not in vocabulary match then just encode non-repeated characters TO DO
 
 
 # Define function to identify if token with multiple repetitions is in vocabulary and encode accordingly:
@@ -332,10 +382,10 @@ def identify_multiple(element, token):
                     # If character is uppercase:
                     if character.isupper():
                         # Character replaced by uppercase symbol:
-                        character = 'Z'
+                        character = 'Λ'
                     # Character replaced by symbol:
                     else:
-                        character = 'z'
+                        character = 'λ'
             # Append encoded character to word list:
             word.append(character)
         # Join encoded characters to form encoded word:
@@ -349,33 +399,19 @@ def identify_multiple(element, token):
         return element
 
 
-# TODO go through and if there is a case in which it is X or UH then use this tag; save to list to check against - so you could go over the entire message file to locate anything that could be considered UH/X before and store in list TO DO
-# TODO create a function for this stage of the process and consider that I do not need so many variables since I could just reassign TO DO
-# TODO check whether it matches interjections first IN PROGRESS
-
-
 def main():
-    # TEMPORARY:
-    message = 'Yeah, yeah yeahhh Adammmm, Adam will-you send mE a liiiinkkkk \\U0001f603 3409'
-    # Initiate list to store message data:
-    message_list = []
-    # Initiate dictionary to store author data:
-    author_dict = {}
     # Execute function to read chat text file and output message dictionary list:
-    read_chat(author_dict, message_list)
-    # Assign result of identifying and encoding message to treated message variable:
-    treated_message = analyze_message(message)
+    message_list = read_chat()
+    # Find all interjections and create list from them:
+    interjections = find_interjections(message_list)
+    # Loop over message dictionaries in message list:
+    for message in message_list:
+        # Assign result of identifying and encoding message to treated message variable:
+        treated_message = analyze_message(interjections, message['message'])
+        # Assign treated message to message value in message dictionary:
+        message['message'] = treated_message
     # TEMPORARY:
-    print(treated_message)
-
-    # INTERJECTIONS WORK:
-    # interjections = []
-    # text = word_tokenize(message)
-    # Tagset is universal if you want X otherwise UH will show
-    # tagged = pos_tag(text, tagset='universal')
-    # for token, tag in tagged:
-    #     if tag == 'UH' and token not in interjections:
-    #         interjections.append(token)
+    print(message_list)
 
 
 if __name__ == '__main__':
