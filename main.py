@@ -1,110 +1,361 @@
+"""Détection et recodage d'éléments paralinguistiques avec Python"""
+
 import re
-# import spacy
-# import nltk
-# from nltk.tokenize import TreebankWordTokenizer as twt
+import spacy
+import emoji
+import nltk
+import os
+
+from nltk import pos_tag
+from nltk.corpus import words
+from nltk.tokenize import word_tokenize
+from tqdm import tqdm
+
+# Load SpaCy language model:
+nlp = spacy.load('en_core_web_sm')
+
+# IMPORTANT: Run following downloads to ensure programme runs successfully:
+# nltk.download('punkt')
+# nltk.download('averaged_perceptron_tagger')
+# nltk.download('universal_tagset')
+
+# Regex associated with date, time, author, message body and external links within file:
+date_regex = r'^[0-9]{2}\/[0-9]{2}\/[0-9]{4}(?=,\s)'
+time_regex = r'(?<=^[0-9]{2}\/[0-9]{2}\/[0-9]{4},\s)[0-9]{2}:[0-9]{2}(?=\s-\s)'
+author_regex = r'(?<=^[0-9]{2}\/[0-9]{2}\/[0-9]{4},\s[0-9]{2}:[0-9]{2}\s-\s).+(?=:\s)'
+message_regex = r'(?<=:\s).*$'
+punctuation_regex = r'[^\w\s]'
+link_regex = r'https?://\S+|www\.\S+'
+emoji_regex = r'\\U[0-9a-fA-F]+'
+
+# Store regex patterns for formatting in list to allow efficient access:
+regex_list = [date_regex, time_regex, author_regex, message_regex]
 
 
-def main():
-    chat = r'test.txt'
+# Function to go over message list and find all examples of interjections:
+def find_interjections(format, messages, exclusions=None):
+    if exclusions == None:
+        interjections = []
+    else:
+        interjections = exclusions
+    for message in messages:
+        if format == 'exported chat':
+            message = message['message']
+        tokens = word_tokenize(message)
+        tagged_tokens = nltk.pos_tag(tokens)
+        for token, tag in tagged_tokens:
+            if tag == 'UH' and token not in interjections:
+                interjections.append(token)
+        universal_tagged = pos_tag(tokens, tagset='universal')
+        for token, tag in universal_tagged:
+            if tag == 'X' and token not in interjections and '\\' not in token:
+                interjections.append(token)
+        document = nlp(message)
+        for token in document:
+            if token.pos_ == 'INTJ' and token.text not in interjections:
+                interjections.append(token.text)
+    return interjections
 
-    dict_list = []
-    error_list = []
-    author_list = []
 
-    # Regular expression patterns associated with date, time, author name and message to extract these data from text
-    # file
-    date_regex = r'^[0-9]{2}\/[0-9]{2}\/[0-9]{4}(?=,\s)'
-    time_regex = r'(?<=^[0-9]{2}\/[0-9]{2}\/[0-9]{4},\s)[0-9]{2}:[0-9]{2}(?=\s-\s)'
-    author_regex = r'(?<=^[0-9]{2}\/[0-9]{2}\/[0-9]{4},\s[0-9]{2}:[0-9]{2}\s-\s)[A-Z][a-z]+[\s]+[A-Z][a-z]+(?=:\s)'
-    message_regex = r'(?<=:\s).*$'
+# Function to encode and decode each message to convert to unicode:
+def encode_emoji(character):
+    return character.encode('unicode-escape').decode('utf-8')
 
-    # Function to search for date regular expression in text file and return true or false if there is match
-    def date_function(text):
-        match = re.search(date_regex, text)
-        if match:
-            return True
-        else:
-            return False
 
-    # Function to search for time regular expression in text file and return true or false if there is match
-    def time_function(text):
-        match = re.search(time_regex, text)
-        if match:
-            return True
-        else:
-            return False
+# Function that splits messages given regex patterns to create list of dictionaries:
+def format_messages(author_dict, message_list, line):
+    try:
+        if all(re.search(regex, line) for regex in regex_list):
+            message_text = line.split(' - ', 1)
+            date, time = message_text[0].split(', ', 1)
+            author, message = message_text[1].split(': ', 1)
+            if author not in author_dict:
+                name = f'speaker{len(author_dict)}'
+                author_dict[author] = name
+                author = name
+            else:
+                author = author_dict[author]
+            message_dict = {'date': date, 'time': time,
+                                'author': author, 'message': message.replace('\n', '')}
+            message_list.append(message_dict)
+    except:
+        print('Error: there was a problem processing this message.')
 
-    # Function to search for author name regular expression in text file and return true or false if there is match
-    def author_function(text):
-        match = re.search(author_regex, text)
-        if match:
-            return True
-        else:
-            return False
 
-    # Function to search for message regular expression in text file and return true or false if there is match
-    def message_function(text):
-        match = re.search(message_regex, text)
-        if match:
-            return True
-        else:
-            return False
-
-    # Function to split text associated with author name by colon and return true or false if length of author name is 2
-    def author_split(text):
-        text = text.split(': ', 1)
-        if len(text) == 2:
-            return True
-        else:
-            return False
-
-    # Function to split text associated with date, time, message and author by dash, comma, colon and index position
-    # and return list of dictionaries
-    def line_split(text):
-        text = text.split(' - ')
-        timestamp = text[0]
-        date, time = timestamp.split(', ')
-        message = ' '.join(text[1:])
-        if author_split(message):
-            split = message.split(': ')
-            author = split[0]
-            message = ' '.join(split[1:])
-        else:
-            author = 'WhatsApp'
-        new_dict = {'date': date, 'time': time, 'author': author, 'message': message}
-        dict_list.append(new_dict)
-
-    # Open text file, read lines and for each line, if date, time, author and message functions return true,
-    # run line split function, otherwise append to error list
-    with open(chat, 'r', encoding='utf-8-sig') as file:
+# Function to read chat text file and output message dictionary list:
+def read_chat(path):
+    message_list = []
+    author_dict = {}
+    with open(path, 'r', encoding='utf-8') as file:
         lines = file.readlines()
         for line in lines:
-            if date_function(line) and time_function(line) and author_function(line) and message_function(line):
-                line_split(line)
+            format_messages(author_dict, message_list, line)
+    for message in message_list:
+        encoded_message = ''
+        for character in message['message']:
+            if emoji.is_emoji(character):
+                character = encode_emoji(character)
+            encoded_message += character
+        message['message'] = encoded_message
+    return message_list
+
+
+# Backtracking algorithm that finds all span combinations, recursively calling itself:
+def backtrack(rest, current, combinations):
+    if not rest:
+        combinations.append(current[:])
+        return
+    start, end = rest[0]
+    for i in range(start + 1, end + 1):
+        current.append([start, i])
+        backtrack(rest[1:], current, combinations)
+        current.pop()
+    return combinations
+
+
+# Function to find all combinations of spans so all spans (x, y) are found until y = x:
+def find_spans(spans):
+    combinations = []
+    combinations = backtrack(spans, [], combinations)
+    return combinations
+
+
+# Function to split message into tokens on whitespace, returning treated tokens:
+def analyze_message(interjections, message):
+    tokens = message.split()
+    token_list = analyze_tokens(interjections, tokens)
+    treated_message = ' '.join(token_list)
+    return treated_message
+
+
+# Function that goes over tokens in list, identifying in and out of vocabulary tokens:
+def analyze_tokens(interjections, tokens):
+    treated_token = ''
+    token_list = []
+    for token in tokens:
+        treated_list = []
+        if re.match(link_regex, token):
+            word = []
+            for character in token:
+                if not re.match(punctuation_regex, character):
+                    symbol = 'ω'
+                    character = symbol
+                word.append(character)
+            encoded_word = ''.join(word)
+            treated_list.append(encoded_word)
+        else:
+            punctuation_separated = re.findall(r'[-_.:\"\',;!?]|[A-Za-z0-9]+|\\U[0-9a-fA-F]+', token)
+            for element in punctuation_separated:
+                if (element.lower() in words.words('en') and element.lower() not in interjections) or element.isdigit():
+                    element = encode_word(element)
+                elif element.lower() not in words.words('en') and element.lower() not in interjections and not re.match(emoji_regex, element):
+                    element = identify_word(interjections, element, token)
+                treated_list.append(element)
+        treated_token = ''.join(treated_list)
+        token_list.append(treated_token)
+    return token_list
+
+
+# Function that takes individual token and encodes it using symbols:
+def encode_word(element):
+    word = []
+    for character in element:
+        character = choose_symbol(character)
+        word.append(character)
+    encoded_word = ''.join(word)
+    return encoded_word
+
+
+# Function to choose symbol associated with character depending on type:
+def choose_symbol(character):
+    if character.isupper():
+        symbol = 'Λ'
+    elif character.isdigit():
+        symbol = 'μ'
+    else:
+        symbol = 'λ'
+    character = symbol
+    return character
+
+
+# Function to attempt to identify and encode tokens that are out of vocabulary:
+def identify_word(interjections, element, token):
+    number_repeats = len(re.findall(r'([a-zA-Z])\1{1,}', element))
+    repeated_characters = re.search(r'([a-zA-Z])\1{1,}', element)
+    unique_alphabetic = re.search(r'([a-zA-Z])(?!\1)(?![\d\W])', element)
+    if repeated_characters and number_repeats == 1:
+        return identify_single(interjections, repeated_characters, element)
+    elif repeated_characters and number_repeats > 1:
+        return identify_multiple(element, token)
+    elif not repeated_characters and unique_alphabetic:
+        return encode_word(element)
+    else:
+        return element
+
+
+# Function to identify if out of vocabulary word with single repetition is in vocabulary:
+def identify_single(interjections, repeated_characters, element):
+    start, end = repeated_characters.span()
+    sliced_word = element
+    sliced_index = end - 1
+    while sliced_word.lower() not in words.words('en') and sliced_word.lower() not in interjections and re.search(r'([a-zA-Z])\1{1,}', sliced_word):
+        sliced_word = element[:sliced_index] + element[end:]
+        sliced_index -= 1
+    s, e = sliced_index, end
+    if sliced_word.lower() not in interjections:
+        word = []
+        for index, character in enumerate(element):
+            if index not in range(s, e):
+                character = choose_symbol(character)
+            word.append(character)
+        encoded_word = ''.join(word)
+        return encoded_word
+    return element
+
+
+# Function to identify if token with multiple repetitions is in vocabulary and encode:
+def identify_multiple(element, token):
+    spans = []
+    repeated_sequences = re.finditer(r'([a-zA-Z])\1{1,}', token)
+    for match in repeated_sequences:
+        start, end = match.span()
+        spans.append([start, end])
+    combinations = find_spans(spans)
+    results = []
+    for combination in combinations:
+        result = []
+        start = 0
+        for index, item in enumerate(combination):
+            result.append(element[start:item[0]] + element[item[0]:item[1]])
+            start = spans[index][1]
+        result.append(element[start:])
+        joined = ''.join(result)
+        if all(joined[i] != joined[i + 1] or joined[i] != joined[i + 2] for i in range(len(joined) - 2)):
+            results.append({'word': joined, 'spans': combination})
+    longest_word = ''
+    final_spans = ''
+    for option in results:
+        singular = option['word'].rstrip('s')
+        if singular.lower() in words.words('en') and len(singular) > len(longest_word):
+            longest_word = option['word']
+            final_spans = option['spans']
+    if len(longest_word) > 0:
+        word = []
+        for index, character in enumerate(element):
+            for i, combination in enumerate(final_spans):
+                if i < len(spans) - 1:
+                    next = spans[i + 1]
+                if (index < spans[0][0] or index >= spans[-1][-1]) or (index in range(combination[0], combination[1])) or (index >= spans[i][-1] and index < next[0]):
+                    character = choose_symbol(character)
+            word.append(character)
+        encoded_word = ''.join(word)
+        return encoded_word
+    else:
+        word = []
+        for index, character in enumerate(element):
+            character = choose_symbol(character)
+            word.append(character)
+        encoded_word = ''.join(word)
+        return encoded_word
+
+
+# Function to read file when provided as body of text rather than formatted export:
+def read_file(path):
+    messages = []
+    with open(path, 'r', encoding='utf-8') as file:
+        contents = file.read()
+        encoded_message = ''
+        for character in contents:
+            if emoji.is_emoji(character):
+                character = encode_emoji(character)
+            encoded_message += character
+        messages.append(encoded_message)
+    return messages
+
+
+# Function to allow export of encoded messages to external text file:
+def write_file(path, messages):
+    with open(path, 'w', encoding='utf-8') as file:
+        for message in messages:
+            if isinstance(message, dict):
+                message = str(message)
+            file.write(message + '\n')
+
+
+# Function that allows initiation of programme and user input of options for encoding:
+def initiate():
+    messages = None
+    while True:
+        path = input('Please input the name of the file you wish to encode:\n')
+        if os.path.exists(path):
+            break
+        else:
+            print("File not found.")
+    format = input('Choose your format (body of text/exported chat):\n')
+    while format.lower() != 'body of text' and format.lower() != 'exported chat':
+        format = input("Enter 'body of text' or 'exported chat':\n")
+    if format.lower() == 'body of text':
+        message_list = read_file(path)
+    elif format.lower() == 'exported chat':
+        message_list = read_chat(path)
+    options = input('Do you have an external text file of words you wish to be excluded from encoding?\n')
+    while options.lower() != 'no' and options.lower() != 'yes':
+        options = input("Enter 'yes' or 'no':\n")
+    exclusions = []
+    if options.lower() == 'yes':
+        while True:
+            external_file = input('Please input the name of the file you wish to include or cancel:\n')
+            if external_file.lower() == 'cancel':
+                external_file = None
+                options = input('Do you have an external text file of words you wish to be excluded from encoding?\n')
+                while options != 'no' and options != 'yes':
+                    options = input("Enter 'yes' or 'no':\n")
+                if options.lower() == 'no':
+                    break
+            elif os.path.exists(external_file):
+                with open(external_file, 'r', encoding='utf-8') as file:
+                    for line in file:
+                        exclusions.append(line.strip())
+                break
             else:
-                error_list.append(line)
+                print("File not found.")
+    interjections = find_interjections(format, message_list, exclusions)
+    with tqdm(total=len(message_list)) as pbar:
+        for message in message_list:
+            if format.lower() == 'exported chat':
+                message_in = message['message']
+            else:
+                message_in = message
+            if message_in == '<Media omitted>':
+                treated_message = message_in
+            else:
+                treated_message = analyze_message(interjections, message_in)
+            if format.lower() == 'body of text':
+                messages = [treated_message]
+            elif format.lower() == 'exported chat':
+                message['message'] = treated_message
+            pbar.update(1)
+    if format.lower() == 'exported chat':
+        messages = message_list
+    print(messages)
+    save = input('Do you want to save externally?\n')
+    while save.lower() != 'no' and save.lower() != 'yes':
+        save = input("Enter 'yes' or 'no':\n")
+    if save.lower() == 'yes':
+        save_path = input('Write path name:\n')
+        confirmation = input(f'Is "{save_path}" correct:\n')
+        if confirmation.lower() == 'yes':
+            try:
+                write_file(save_path, messages)
+            except:
+                print('Error: there was a problem saving to this file path.')
 
-    # For each dictionary in list, check whether author value is in author list, if not append author value to author
-    # list, then rename author value according to index position in author list
-    for d in dict_list:
-        name = d['author']
-        if name not in author_list:
-            author_list.append(name)
-        for i in range(len(author_list)):
-            if name == author_list[i] and name != 'WhatsApp':
-                d['author'] = 'Speaker ' + str(i + 1)
 
-    # THINGS TO DO NEXT:
-    # - Use and split author list by space, if value in author list appears in message, replace with number of λ to
-    # match speaker length
-    # - Organise messages into separate arrays according to speaker
-    # - Join all messages together into single string for each speaker
-    # - For each speaker's messages tag words according to linguistic feature
-    # - If word is not linguistic feature, append to list of para/extra features
-    # - If word is linguistic feature, replace word with upper and lowercase λ
-
-    print(dict_list)
+# Function that allows programme to be initiated:
+def main():
+    initiate()
 
 
-if __name__ == "__main__":
+# Allow programme functions to be used independently as package:
+if __name__ == '__main__':
     main()
