@@ -1,4 +1,4 @@
-# Détection et recodage d'éléments paralinguistiques avec Python
+# Détection et recodage d'éléments paralinguistiques
 
 Projet de master en analyse textuelle avec Python, entrepris à l'UNIL sous la direction d'Aris Xanthos, SA2023.
 
