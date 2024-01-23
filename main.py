@@ -33,28 +33,24 @@ regex_list = [date_regex, time_regex, author_regex, message_regex]
 
 
 # Function to go over message list and find all examples of interjections:
-def find_interjections(format, messages, exclusions=None):
-    if exclusions == None:
-        interjections = []
-    else:
-        interjections = exclusions
+def find_interjections(format, messages, exclusions=[]):
     for message in messages:
         if format == 'exported chat':
             message = message['message']
         tokens = word_tokenize(message)
         tagged_tokens = nltk.pos_tag(tokens)
         for token, tag in tagged_tokens:
-            if tag == 'UH' and token not in interjections:
-                interjections.append(token)
+            if tag == 'UH' and token not in exclusions:
+                exclusions.append(token)
         universal_tagged = pos_tag(tokens, tagset='universal')
         for token, tag in universal_tagged:
-            if tag == 'X' and token not in interjections and '\\' not in token:
-                interjections.append(token)
+            if tag == 'X' and token not in exclusions and '\\' not in token:
+                exclusions.append(token)
         document = nlp(message)
         for token in document:
-            if token.pos_ == 'INTJ' and token.text not in interjections:
-                interjections.append(token.text)
-    return interjections
+            if token.pos_ == 'INTJ' and token.text not in exclusions:
+                exclusions.append(token.text)
+    return exclusions
 
 
 # Function to encode and decode each message to convert to unicode:
@@ -121,20 +117,27 @@ def find_spans(spans):
 
 
 # Function to split message into tokens on whitespace, returning treated tokens:
-def analyze_message(interjections, message):
+def analyze_message(message, interjections=[]):
     tokens = message.split()
-    token_list = analyze_tokens(interjections, tokens)
+    token_list = analyze_tokens(tokens, interjections)
     treated_message = ' '.join(token_list)
     return treated_message
 
 
 # Function that goes over tokens in list, identifying in and out of vocabulary tokens:
-def analyze_tokens(interjections, tokens):
+def analyze_tokens(tokens, interjections=None):
+    emoticons = get_exclusions('emoticons.txt')
     treated_token = ''
     token_list = []
     for token in tokens:
         treated_list = []
-        if re.match(link_regex, token):
+        escaped_emoticons = []
+        for emoticon in emoticons:
+            escaped_emoticons.append(re.escape(emoticon))
+        emoticons_regex = '|'.join(escaped_emoticons)
+        if re.match(emoticons_regex, token):
+            treated_list.append(token)
+        elif re.match(link_regex, token):
             word = []
             for character in token:
                 if not re.match(punctuation_regex, character):
@@ -149,7 +152,7 @@ def analyze_tokens(interjections, tokens):
                 if (element.lower() in words.words('en') and element.lower() not in interjections) or element.isdigit():
                     element = encode_word(element)
                 elif element.lower() not in words.words('en') and element.lower() not in interjections and not re.match(emoji_regex, element):
-                    element = identify_word(interjections, element, token)
+                    element = identify_word(element, interjections)
                 treated_list.append(element)
         treated_token = ''.join(treated_list)
         token_list.append(treated_token)
@@ -179,14 +182,14 @@ def choose_symbol(character):
 
 
 # Function to attempt to identify and encode tokens that are out of vocabulary:
-def identify_word(interjections, element, token):
+def identify_word(element, interjections=[]):
     number_repeats = len(re.findall(r'([a-zA-Z])\1{1,}', element))
     repeated_characters = re.search(r'([a-zA-Z])\1{1,}', element)
     unique_alphabetic = re.search(r'([a-zA-Z])(?!\1)(?![\d\W])', element)
     if repeated_characters and number_repeats == 1:
-        return identify_single(interjections, repeated_characters, element)
+        return identify_single(repeated_characters, element, interjections)
     elif repeated_characters and number_repeats > 1:
-        return identify_multiple(element, token)
+        return identify_multiple(element, interjections)
     elif not repeated_characters and unique_alphabetic:
         return encode_word(element)
     else:
@@ -194,7 +197,7 @@ def identify_word(interjections, element, token):
 
 
 # Function to identify if out of vocabulary word with single repetition is in vocabulary:
-def identify_single(interjections, repeated_characters, element):
+def identify_single(repeated_characters, element, interjections=[]):
     start, end = repeated_characters.span()
     sliced_word = element
     sliced_index = end - 1
@@ -214,9 +217,9 @@ def identify_single(interjections, repeated_characters, element):
 
 
 # Function to identify if token with multiple repetitions is in vocabulary and encode:
-def identify_multiple(element, token):
+def identify_multiple(element, interjections=[]):
     spans = []
-    repeated_sequences = re.finditer(r'([a-zA-Z])\1{1,}', token)
+    repeated_sequences = re.finditer(r'([a-zA-Z])\1{1,}', element)
     for match in repeated_sequences:
         start, end = match.span()
         spans.append([start, end])
@@ -236,6 +239,9 @@ def identify_multiple(element, token):
     final_spans = ''
     for option in results:
         singular = option['word'].rstrip('s')
+        if singular.lower() in interjections:
+            longest_word = option['word']
+            return element
         if singular.lower() in words.words('en') and len(singular) > len(longest_word):
             longest_word = option['word']
             final_spans = option['spans']
@@ -282,9 +288,19 @@ def write_file(path, messages):
             file.write(message + '\n')
 
 
+# Function that reads external files to make list of exclusions:
+def get_exclusions(file):
+    exclusions = []
+    with open(file, 'r', encoding='utf-8') as file:
+        for line in file:
+            exclusions.append(line.strip())
+    return exclusions
+
+
 # Function that allows initiation of programme and user input of options for encoding:
 def initiate():
     messages = None
+    exclusions = []
     while True:
         path = input('Please input the name of the file you wish to encode:\n')
         if os.path.exists(path):
@@ -301,7 +317,6 @@ def initiate():
     options = input('Do you have an external text file of words you wish to be excluded from encoding?\n')
     while options.lower() != 'no' and options.lower() != 'yes':
         options = input("Enter 'yes' or 'no':\n")
-    exclusions = []
     if options.lower() == 'yes':
         while True:
             external_file = input('Please input the name of the file you wish to include or cancel:\n')
@@ -313,9 +328,7 @@ def initiate():
                 if options.lower() == 'no':
                     break
             elif os.path.exists(external_file):
-                with open(external_file, 'r', encoding='utf-8') as file:
-                    for line in file:
-                        exclusions.append(line.strip())
+                exclusions = get_exclusions(external_file)
                 break
             else:
                 print("File not found.")
@@ -329,7 +342,7 @@ def initiate():
             if message_in == '<Media omitted>':
                 treated_message = message_in
             else:
-                treated_message = analyze_message(interjections, message_in)
+                treated_message = analyze_message(message_in, interjections)
             if format.lower() == 'body of text':
                 messages = [treated_message]
             elif format.lower() == 'exported chat':
@@ -343,7 +356,7 @@ def initiate():
         save = input("Enter 'yes' or 'no':\n")
     if save.lower() == 'yes':
         save_path = input('Write path name:\n')
-        confirmation = input(f'Is "{save_path}" correct:\n')
+        confirmation = input(f'Is "{save_path}" correct?\n')
         if confirmation.lower() == 'yes':
             try:
                 write_file(save_path, messages)
