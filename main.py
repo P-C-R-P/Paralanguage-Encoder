@@ -125,7 +125,7 @@ def analyze_message(message, interjections=[]):
 
 
 # Function that goes over tokens in list, identifying in and out of vocabulary tokens:
-def analyze_tokens(tokens, interjections=None):
+def analyze_tokens(tokens, interjections=[]):
     emoticons = get_exclusions('emoticons.txt')
     treated_token = ''
     token_list = []
@@ -149,10 +149,15 @@ def analyze_tokens(tokens, interjections=None):
         else:
             punctuation_separated = re.findall(r'[-_.:\"\',;!?]|[A-Za-z0-9]+|\\U[0-9a-fA-F]+', token)
             for element in punctuation_separated:
+                tagged = nlp(element)
                 if (element.lower() in words.words('en') and element.lower() not in interjections) or element.isdigit():
                     element = encode_word(element)
                 elif element.lower() not in words.words('en') and element.lower() not in interjections and not re.match(emoji_regex, element):
-                    element = identify_word(element, interjections)
+                    for tag in tagged:
+                        if tag.pos_ == 'VERB' and tag.lemma_ in words.words('en'):
+                            element = encode_word(element)
+                        else:
+                            element = identify_word(element, interjections)
                 treated_list.append(element)
         treated_token = ''.join(treated_list)
         token_list.append(treated_token)
@@ -202,6 +207,10 @@ def identify_single(repeated_characters, element, interjections=[]):
     sliced_word = element
     sliced_index = end - 1
     while sliced_word.lower() not in words.words('en') and sliced_word.lower() not in interjections and re.search(r'([a-zA-Z])\1{1,}', sliced_word):
+        tagged = nlp(sliced_word)
+        for tag in tagged:
+            if tag.pos_ == 'VERB' and tag.lemma_ in words.words('en'):
+                return
         sliced_word = element[:sliced_index] + element[end:]
         sliced_index -= 1
     s, e = sliced_index, end
@@ -245,6 +254,12 @@ def identify_multiple(element, interjections=[]):
         if singular.lower() in words.words('en') and len(singular) > len(longest_word):
             longest_word = option['word']
             final_spans = option['spans']
+        if singular.lower() not in words.words('en'):
+            tagged = nlp(singular)
+            for tag in tagged:
+                if tag.pos_ == 'VERB' and tag.lemma_ in words.words('en'):
+                    longest_word = option['word']
+                    final_spans = option['spans']
     if len(longest_word) > 0:
         word = []
         for index, character in enumerate(element):
